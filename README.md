@@ -1,9 +1,10 @@
-Estrutura de backend usando Vapor. 
-Testes unitários já vêm integrados.
+# Back-End do Planejador de Disciplinas
 
+Estrutura de backend usando Vapor, com testes unitários já integrados.
 
-Estrutura de folders: 
+## Estrutura de folders:
 
+```
 .
 ├── Public (imagens, style sheets, browser scripts.. Precisa dar um enable no FileMiddleware dentro do configure.swift para funcionar)
 ├── Sources (código em swift)
@@ -18,3 +19,4 @@ Estrutura de folders:
 ├── Tests (cada módulo não executável em Sources deve ter um correspondente aqui para fazer os testes unitários)
 │   └── AppTests (testes para o moduele App)
 └── Package.swift (swift package manager package manifest)
+```
