@@ -7,19 +7,29 @@ let package = Package(
        .macOS(.v10_15)
     ],
     dependencies: [
-        // 💧 A server-side Swift web framework.
+        // biblioteca para Logging, usada pelo Vapor
+        .package(url: "https://github.com/apple/swift-log.git", from: "1.4.0"),
+        // framework para servidores web
         .package(url: "https://github.com/vapor/vapor.git", from: "4.0.0"),
     ],
     targets: [
         .target(
-            name: "App",
+            name: "Services",
             dependencies: [
-                .product(name: "Vapor", package: "vapor")
+                .product(name: "Logging", package: "swift-log")
             ],
             swiftSettings: [
-                // Enable better optimizations when building in Release configuration. Despite the use of
-                // the `.unsafeFlags` construct required by SwiftPM, this flag is recommended for Release
-                // builds. See <https://github.com/swift-server/guides/blob/main/docs/building.md#building-for-production> for details.
+                .unsafeFlags(["-cross-module-optimization"], .when(configuration: .release))
+            ]
+        ),
+        .target(
+            name: "App",
+            dependencies: [
+                .product(name: "Vapor", package: "vapor"),
+                .target(name: "Services")
+            ],
+            swiftSettings: [
+                // Detalhes em https://github.com/swift-server/guides/blob/main/docs/building.md#building-for-production
                 .unsafeFlags(["-cross-module-optimization"], .when(configuration: .release))
             ]
         ),
@@ -28,5 +38,6 @@ let package = Package(
             .target(name: "App"),
             .product(name: "XCTVapor", package: "vapor"),
         ])
-    ]
+    ],
+    swiftLanguageVersions: [.v5]
 )
