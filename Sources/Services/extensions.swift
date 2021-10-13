@@ -12,6 +12,7 @@ public extension Collection {
     ///
     /// ["a", "b"].get(at: 2) == nil
     /// ```
+    @inlinable
     func get(at position: Index) -> Element? {
         if self.indices.contains(position) {
             return self[position]
@@ -26,16 +27,18 @@ public extension Collection {
 /// # Obsercação
 ///
 /// Não é seguro em usos gerais.
-private class Mutex<T> {
+private struct Mutex<T> {
     private let inner = NSLock()
     private var value: T
 
+    @inlinable
     init(_ value: T) {
         self.value = value
     }
 
     /// Executa uma ação com controle da mutex.
-    func withLock<U>(perform: (inout T) throws -> U) rethrows -> U {
+    @inlinable
+    mutating func withLock<U>(perform: (inout T) throws -> U) rethrows -> U {
         self.inner.lock()
         defer { self.inner.unlock() }
 
@@ -47,12 +50,13 @@ private class Mutex<T> {
     /// # Cuidado
     ///
     /// Usar apenas após todas as operações com a mutex.
+    @inlinable
     func get() -> T {
         self.value
     }
 }
 
-public extension RandomAccessCollection where SubSequence == ArraySlice<Element> {
+extension RandomAccessCollection {
     /// Versão concorrente do ``Array.forEach``.
     ///
     /// Pode ser executada em ordem diferente da esperada.
@@ -64,7 +68,9 @@ public extension RandomAccessCollection where SubSequence == ArraySlice<Element>
             execute: (Element) throws -> Void,
             onError: (Error) throws -> Void
         ) rethrows {
-            let err = Mutex<Error?>(nil)
+            /// precisa ser na mutex, para evitar data race
+            /// mas ela só é usada realmente em caso de erro
+            var err = Mutex<Error?>(nil)
 
             DispatchQueue.concurrentPerform(iterations: self.count) { position in
                 let index = self.index(
@@ -78,27 +84,40 @@ public extension RandomAccessCollection where SubSequence == ArraySlice<Element>
                     err.withLock { $0 = error }
                 }
             }
-
+            // os erros só são acusados no final, sem early return
             if let error = err.get() {
                 try onError(error)
             }
         }
     }
 
+    /// Versão concorrent de ``Array.reduce`` com acesso direto
+    /// para a `Mutex`.
+    ///
+    /// Não é seguro por conta do `Mutex.get`, que pode levar a
+    /// data races.
+    private func concurrentUnsafeReduce<Result>(
+        into initialResult: Result,
+        _ updateAccumulatingResult: (inout Mutex<Result>, Element) throws -> ()
+    ) rethrows -> Result {
+        /// mutex protege contra data races
+        var result = Mutex(initialResult)
+
+        try self.concurrentForEach { item in
+            try updateAccumulatingResult(&result, item)
+        }
+        return result.get()
+    }
+
     /// Versão concorrente do ``Array.map``.
     ///
     /// O resultado pode ter uma ordem diferente da esperada.
     func concurrentMap<T>(_ transform: (Element) throws -> T) rethrows -> [T] {
-        let transformed = Mutex<[T]>([])
-
-        try self.concurrentForEach { item in
+        try self.concurrentUnsafeReduce(into: []) { mutex, item in
             let newItem = try transform(item)
-
-            transformed.withLock {
-                $0.append(newItem)
-            }
+            // tranca apenas quando necessário
+            mutex.withLock { $0.append(newItem) }
         }
-        return transformed.get()
     }
 
     /// Versão concorrente do ``Array.flatMap``.
@@ -107,16 +126,11 @@ public extension RandomAccessCollection where SubSequence == ArraySlice<Element>
     func concurrentFlatMap<Segment: Sequence>(
         _ transform: (Element) throws -> Segment
     ) rethrows -> [Segment.Element] {
-        let transformed = Mutex<[Segment.Element]>([])
-
-        try self.concurrentForEach { item in
-            let newSequence = try transform(item)
-
-            transformed.withLock {
-                $0.append(contentsOf: newSequence)
-            }
+        try self.concurrentUnsafeReduce(into: []) { mutex, item in
+            let newSegment = try transform(item)
+            // tranca apenas quando necessário
+            mutex.withLock { $0.append(contentsOf: newSegment) }
         }
-        return transformed.get()
     }
 
     /// Versão concorrente do ``Array.compactMap``.
@@ -125,16 +139,12 @@ public extension RandomAccessCollection where SubSequence == ArraySlice<Element>
     func concurrentCompactMap<Result>(
         _ transform: (Element) throws -> Result?
     ) rethrows -> [Result] {
-        let transformed = Mutex<[Result]>([])
-
-        try self.concurrentForEach { item in
+        try self.concurrentUnsafeReduce(into: []) { mutex, item in
             if let newItem = try transform(item) {
-                transformed.withLock {
-                    $0.append(newItem)
-                }
+                // tranca apenas quando necessário
+                mutex.withLock { $0.append(newItem) }
             }
         }
-        return transformed.get()
     }
 }
 
@@ -142,12 +152,13 @@ public extension MutableCollection where Self: RandomAccessCollection {
     /// Ordena a coleção usando uma chave de comparação.
     ///
     /// - Complexity: O(*n* log *n*)
+    @inlinable
     mutating func sort<T: Comparable>(on key: (Element) throws -> T) rethrows {
         try self.sort { try key($0) < key($1) }
     }
 }
 
-public extension RandomAccessCollection where Index: BinaryInteger {
+extension RandomAccessCollection where Index: BinaryInteger {
     /// Busca binária em um vetor ordenado.
     ///
     /// - Parameter searchKey: Chave a ser buscada.
@@ -160,6 +171,7 @@ public extension RandomAccessCollection where Index: BinaryInteger {
     ///   maiores).
     ///
     /// - Complexity: O(*n* log *n*)
+    @inlinable
     func binarySearch<T>(
         for searchKey: T,
         on key: (Element) throws -> T,
@@ -195,6 +207,7 @@ public extension RandomAccessCollection where Index: BinaryInteger {
     ///   maiores).
     ///
     /// - Complexity: O(log *n*)
+    @inlinable
     func binarySearch<T: Comparable>(
         for searchKey: T,
         on key: (Element) throws -> T
@@ -206,12 +219,13 @@ public extension RandomAccessCollection where Index: BinaryInteger {
 /// Localização POSIX para remoção de acentos.
 private let usPosixLocale = Locale(identifier: "en_US_POSIX")
 
-public extension StringProtocol {
+extension StringProtocol {
     /// Remove a extensão do nome do arquivo.
     ///
     /// ```swift
     /// "arquivo.py".strippedExtension() == "arquivo"
     /// ```
+    @inlinable
     func strippedExtension() -> String {
         var components = self.components(separatedBy: ".")
         if components.count > 1 {
@@ -232,4 +246,52 @@ public extension StringProtocol {
             locale: usPosixLocale
         )
     }
+
+    /// Lista de palavras na string.
+    ///
+    /// Ignora espeços consecutivos.
+    @inlinable
+    func splitWords() -> [String] {
+        self.components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+    }
+}
+
+extension Double {
+    /// Limita o valor para o range `[min, max]`.
+    ///
+    /// - Returns: O valor dentro do intervalo fechado
+    ///  `[min, max]` que está mais próximo de `self`.
+    @inlinable
+    func clamped(from min: Double = -Self.infinity, upTo max: Double = Self.infinity) -> Double {
+        if self <= min {
+            return min
+        } else if self >= max {
+            return max
+        } else {
+            return self
+        }
+    }
+}
+
+/// Executa a função, marcando o tempo demorado.
+///
+/// - Returns: tempo demorado e valor retornado.
+@inlinable
+public func withTiming<T>(run: () throws -> T) rethrows -> (elapsed: Double, value: T) {
+    let start = DispatchTime.now()
+    let value = try run()
+    let end = DispatchTime.now()
+
+    let diff = end.uptimeNanoseconds - start.uptimeNanoseconds
+    let elapsed = Double(diff) / 1E9
+    return (elapsed, value)
+}
+
+/// Executa a função, marcando o tempo demorado.
+///
+/// - Returns: tempo demorado.
+@inlinable
+public func withTiming(run: () throws -> Void) rethrows -> Double {
+    try withTiming(run: run).elapsed
 }

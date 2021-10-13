@@ -1,16 +1,35 @@
 import Vapor
 
 func routes(_ app: Application) throws {
-    app.get { req in
-        return "It works!"
+    let api = app.grouped("api")
+
+    /// Parâmetros de busca textual.
+    struct SearchParams: Content {
+        let query: String
+        let limit: Int?
+    }
+
+    // API: busca textual entre vários elementos.
+    api.get("busca") { req -> Future<[Match]> in
+
+        let params = try req.query.decode(SearchParams.self)
+        // roda em async para não travar a aplicação
+        // https://docs.vapor.codes/4.0/async/#blocking
+        return req.application.async(on: req.eventLoop) {
+            req.scrapedData.search(
+                for: params.query,
+                limitingTo: params.limit ?? 100,
+                maxScore: 0.99
+            )
+        }
     }
 
     // API: dados para a página de uma disciplina
-    app.get("api", "disciplina", ":code") { req -> Discipline in
+    api.get("disciplina", ":code") { req -> Discipline in
         // SAFETY: o router do Vapor só deixa chegar aqui com o parâmetro
         let code = req.parameters.get("code")!
 
-        guard let result = req.scrapedData.getDiscipline(withCode: code) else {
+        guard let result = req.scrapedData.getDiscipline(with: code) else {
             // retorna 404 NOT FOUND
             throw Abort(.notFound)
         }
