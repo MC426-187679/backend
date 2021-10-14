@@ -96,7 +96,7 @@ extension RandomAccessCollection {
     ///
     /// Não é seguro por conta do `Mutex.get`, que pode levar a
     /// data races.
-    private func concurrentUnsafeReduce<Result>(
+    private func unsafeConcurrentReduce<Result>(
         into initialResult: Result,
         _ updateAccumulatingResult: (inout Mutex<Result>, Element) throws -> ()
     ) rethrows -> Result {
@@ -113,7 +113,7 @@ extension RandomAccessCollection {
     ///
     /// O resultado pode ter uma ordem diferente da esperada.
     func concurrentMap<T>(_ transform: (Element) throws -> T) rethrows -> [T] {
-        try self.concurrentUnsafeReduce(into: []) { mutex, item in
+        try self.unsafeConcurrentReduce(into: []) { mutex, item in
             let newItem = try transform(item)
             // tranca apenas quando necessário
             mutex.withLock { $0.append(newItem) }
@@ -126,7 +126,7 @@ extension RandomAccessCollection {
     func concurrentFlatMap<Segment: Sequence>(
         _ transform: (Element) throws -> Segment
     ) rethrows -> [Segment.Element] {
-        try self.concurrentUnsafeReduce(into: []) { mutex, item in
+        try self.unsafeConcurrentReduce(into: []) { mutex, item in
             let newSegment = try transform(item)
             // tranca apenas quando necessário
             mutex.withLock { $0.append(contentsOf: newSegment) }
@@ -139,7 +139,7 @@ extension RandomAccessCollection {
     func concurrentCompactMap<Result>(
         _ transform: (Element) throws -> Result?
     ) rethrows -> [Result] {
-        try self.concurrentUnsafeReduce(into: []) { mutex, item in
+        try self.unsafeConcurrentReduce(into: []) { mutex, item in
             if let newItem = try transform(item) {
                 // tranca apenas quando necessário
                 mutex.withLock { $0.append(newItem) }

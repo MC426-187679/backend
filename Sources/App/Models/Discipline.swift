@@ -9,10 +9,14 @@ struct Discipline: Content {
     let code: String
     /// Nome da disciplina.
     let name: String
+    /// Número de créditos.
+    let credits: Int
     /// Grupos de requisitos da disciplina.
     let reqs: [[Requirement]]?
     /// Disciplina que tem essa como requisito.
     let reqBy: [String]?
+    /// Ementa da disciplina.
+    let syllabus: String
 }
 
 /// Requisito de uma disciplina.
@@ -41,6 +45,8 @@ extension Discipline: Searchable {
         case code
         /// Busca pelo nome da disciplina.
         case name
+        /// Busca pela ementa da disciplina.
+        case syllabus
 
         @inlinable
         func get(from item: Discipline) -> String {
@@ -49,6 +55,8 @@ extension Discipline: Searchable {
                     return item.code
                 case .name:
                     return item.name
+                case .syllabus:
+                    return item.syllabus
             }
         }
 
@@ -59,7 +67,9 @@ extension Discipline: Searchable {
                 case .code:
                     return 0.6
                 case .name:
-                    return 0.4
+                    return 0.3
+                case .syllabus:
+                    return 0.1
             }
         }
     }

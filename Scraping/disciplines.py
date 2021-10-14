@@ -17,8 +17,10 @@ PROCESSES = 12
 class Discipline(TypedDict):
     code: str
     name: str
+    credits: int
     reqs: Optional[list[list[Requirement]]]
     reqBy: Optional[list[str]]
+    syllabus: str
 
 
 class Requirement(TypedDict):
@@ -108,7 +110,9 @@ def parse_disciplines(disciplines: bs4.element.ResultSet) -> dict[str, Disciplin
     """
     disciplines_id = 'disc' # Part of the id from the tag with code and name.
     code_name_sep = ' - ' # Discipline code and name separator.
+    credits_text = 'créditos' # Part of the text in the credits tag.
     requirements_text = 'requisitos' # Part of the text in the requirements tag.
+    syllabus_text = 'ementa' # Part of the text in the syllabus tag.
 
     disciplines_map = dict()
     for discipline in disciplines:
@@ -117,16 +121,26 @@ def parse_disciplines(disciplines: bs4.element.ResultSet) -> dict[str, Disciplin
             code_name_tag = discipline.find(id=compile_regex(disciplines_id))
             code, name = code_name_tag.text.split(code_name_sep, 1)
 
+            # Discipline credits:
+            credits_tag = discipline.find(True, string=compile_regex(credits_text))
+            credits = int(credits_tag.next_sibling)
+
             # Discipine requirements:
             requirements_tag = discipline.find(True, string=compile_regex(requirements_text))
             requirements_string = requirements_tag.next_sibling.next_sibling.text # First sibling is just a line break.
             reqs = parse_requirements(requirements_string)
 
+            # Discipline syllabus:
+            syllabus_tag = discipline.find(True, string=compile_regex(syllabus_text))
+            syllabus = syllabus_tag.next_sibling.next_sibling.text # First sibling is just a line break.
+
             # Save info:
+            new_discipline = Discipline(code=code, name=name, credits=credits, syllabus=syllabus)
+
             if reqs:
-                disciplines_map[code] = Discipline(code=code, name=name, reqs=reqs)
-            else:
-                disciplines_map[code] = Discipline(code=code, name=name)
+                new_discipline['reqs'] = reqs
+
+            disciplines_map[code] = new_discipline
 
         except AttributeError:
             continue

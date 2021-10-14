@@ -80,20 +80,20 @@ public struct Database<Item: Searchable> {
     }
 
     /// Constrói banco de dados na memória com cache de busca.
-    public init(entries data: [Item], logger: Logger? = nil) throws {
+    public init(entries data: [Item], logger: Logger) throws {
         // garante pesos positivos
-        if Item.properties.contains(where: { $0.weight <= 0 }) {
-            throw NonPositiveWeightError(Item.self)
+        if let error = NonPositiveWeightError(Item.self) {
+            throw error
         }
         // só então monta os dados
-        logger?.info("Buildind Database for \(Item.self)...")
+        logger.info("Buildind Database for \(Item.self)...")
 
         let (elapsed, entries) = withTiming {
             Self.buildEntries(for: data)
         }
         self.entries = entries
 
-        logger?.info("DB for \(Item.self) built with \(data.count) items in \(elapsed) secs.")
+        logger.info("DB for \(Item.self) built with \(data.count) items in \(elapsed) secs.")
     }
 
     /// Busca linear no conjunto de dados.
@@ -174,12 +174,17 @@ private struct NonPositiveWeightError: Error, LocalizedError {
     /// Tipo com problema de peso não-positivo.
     private let type: Any.Type
 
-    /// Constrói erro para tipos buscáveis.
-    init<T: Searchable>(_ type: T.Type) {
+    /// Constrói erro para tipos buscáveis se existir alguma
+    /// propriedade com peso não-positivo.
+    init?<T: Searchable>(_ type: T.Type) {
         self.type = type
 
         self.properties = T.properties.map { field in
             (name: "\(field)", field.weight)
+        }
+        // o erro é para propriedades com peso negativo
+        guard !self.offendingFields.isEmpty else {
+            return nil
         }
     }
 
