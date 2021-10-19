@@ -64,20 +64,31 @@ final class ScrapedData: StorageKey {
     private let logger: Logger
     /// Controlador de disciplinas.
     private let disciplines: Discipline.Controller
+    /// Controlador de cursos.
+    private let courses: Course.Controller
 
     fileprivate init(_ app: Application) throws {
         // inicia thread para preparar os dados
         let disciplines = app.async {
             try Discipline.Controller(logger: app.logger)
         }
+        let courses = app.async {
+            try Course.Controller(logger: app.logger)
+        }
         // então monta o controlador global
         self.logger = app.logger
         self.disciplines = try disciplines.wait()
+        self.courses = try courses.wait()
     }
 
     /// Recupera uma disciplina pelo seu código.
     func getDiscipline(with code: String) -> Discipline? {
         self.disciplines.get(code: code)
+    }
+
+    /// Recupera um curso pelo seu código.
+    func getCourse(with code: String) -> Course? {
+        self.courses.get(code: code)
     }
 
     /// Busca textual dentre os dados carregados na memória.
@@ -86,11 +97,20 @@ final class ScrapedData: StorageKey {
     ///   os conjuntos de dados, mas com score menor que
     ///   `maxScore`.
     func search(for text: String, limitingTo limit: Int, maxScore: Double) -> [Match]  {
-        let (elapsed, matches) = withTiming {
-            self.disciplines.search(for: text, limitedTo: limit, upTo: maxScore)
+        let (elapsed, matches) = withTiming { () -> [Match] in
+            let disciplinesResult = self.disciplines.search(for: text, limitedTo: limit, upTo: maxScore)
+            let coursesResult = self.courses.search(for: text, limitedTo: limit, upTo: maxScore)
+            return mergeAndSortSearchResults(results: [disciplinesResult, coursesResult], limitingTo: limit)
         }
         self.logger.info("Searched for \"\(text)\" with \(matches.count) results in \(elapsed) secs.")
 
         return matches
+    }
+
+    /// Junta vários resultados de busca em um só array.
+    private func mergeAndSortSearchResults(results: [[Match]], limitingTo limit: Int) -> [Match] {
+        var allResults = results.flatMap { $0 }
+        allResults.sort { $0.score }
+        return Array(allResults.prefix(limit))
     }
 }

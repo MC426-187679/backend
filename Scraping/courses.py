@@ -19,7 +19,7 @@ class Variant(TypedDict):
 class Course(TypedDict):
     code: str
     name: str
-    variant: list[Variant]
+    variant: Optional[list[Variant]]
     tree: Optional[list[list[str]]]
 
 

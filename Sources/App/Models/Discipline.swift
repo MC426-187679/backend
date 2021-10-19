@@ -31,6 +31,7 @@ struct Requirement: Content {
 
 extension Discipline: WebScrapable {
     static let scriptName = "disciplines.py"
+    typealias Output = [Self]
 }
 
 extension Discipline: Searchable {

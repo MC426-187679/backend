@@ -18,7 +18,7 @@ struct QueryString {
     /// (removendo acentos e padronizando caracteres
     /// unicode).
     init(_ from: String) {
-        let (text, _) = Self.prepareAndCountWords(from)
+        let text = Self.normalizeQueryText(from)
 
         self.content = ContiguousArray(text.utf8CString)
         self.length = self.content.withUnsafeBufferPointer {
@@ -34,13 +34,9 @@ struct QueryString {
         }
     }
 
-    /// Faz a normalização descrita em `init`
-    /// e conta a quantidade de palavras com
-    /// mais de 2 caracteres.
-    fileprivate static func prepareAndCountWords(_ string: String) -> (text: String, words: Int) {
-        let words = string.normalized().splitWords().filter { $0.count > 2 }
-
-        return (text: words.joined(separator: " "), words: words.count)
+    /// Faz a normalização descrita em `init`.
+    fileprivate static func normalizeQueryText(_ string: String) -> String {
+        return string.normalized().splitWords().joined(separator: " ")
     }
 }
 
@@ -89,7 +85,7 @@ private final class FuzzyField {
     /// strings e calcula a norma do campo.
     @inlinable
     init(value: String, weight: Double) {
-        let (text, _) = QueryString.prepareAndCountWords(value)
+        let text = QueryString.normalizeQueryText(value)
 
         self.weight = weight
         // constroi com a API de C++

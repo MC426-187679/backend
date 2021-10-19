@@ -29,10 +29,40 @@ func routes(_ app: Application) throws {
         // SAFETY: o router do Vapor só deixa chegar aqui com o parâmetro
         let code = req.parameters.get("code")!
 
-        guard let result = req.scrapedData.getDiscipline(with: code) else {
+        guard let discipline = req.scrapedData.getDiscipline(with: code) else {
             // retorna 404 NOT FOUND
             throw Abort(.notFound)
         }
-        return result
+
+        return discipline
+    }
+
+    // API: dados para a página de um curso
+    api.get("curso", ":code") { req -> Course in
+        // SAFETY: o router do Vapor só deixa chegar aqui com o parâmetro
+        let code = req.parameters.get("code")!
+
+        guard let course = req.scrapedData.getCourse(with: code) else {
+            throw Abort(.notFound)
+        }
+
+        return course
+    }
+
+    // API: dados para a página de árvore do curso
+    api.get("curso", ":code", ":variant") { req -> CourseTree in
+        // SAFETY: o router do Vapor só deixa chegar aqui com os parâmetros
+        let code = req.parameters.get("code")!
+        let variant = req.parameters.get("variant")!
+
+        guard
+            let index = Int(variant),
+            let course = req.scrapedData.getCourse(with: code),
+            let tree = course.getTree(forIndex: index)
+        else {
+            throw Abort(.notFound)
+        }
+
+        return tree
     }
 }
