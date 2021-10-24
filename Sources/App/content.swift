@@ -74,6 +74,11 @@ extension ContentController {
     }
 }
 
+extension Logger {
+    /// ContentController logger.
+    static var controllerLogger = Logger(label: "ContentController")
+}
+
 /// Representa um match no conjunto de dados.
 ///
 /// Útil para trabalhar com matches de tipos

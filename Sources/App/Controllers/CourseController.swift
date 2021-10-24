@@ -4,12 +4,21 @@ import Vapor
 
 extension Course {
     /// Controlador dos cursos recuperados por Scraping.
-    struct Controller: ContentController {
+    ///
+    /// Classe singleton. Usar `.shared` para pegar instância.
+    final class Controller: ContentController {
         typealias Content = Course
 
         private let db: Database<Course>
 
-        init(logger: Logger) throws {
+        /// Instância compartilhada do singleton.
+        ///
+        /// Por ser estática, é lazy por padrão, ou seja,
+        /// o database será criado apenas na primeira chamada.
+        static let shared = try! Controller(logger: .controllerLogger)
+
+        /// Inicializador privado do singleton.
+        private init(logger: Logger) throws {
             let data = try Course.scrape(logger: logger)
             self.db = try Database(entries: Array(data.values), logger: logger)
         }
