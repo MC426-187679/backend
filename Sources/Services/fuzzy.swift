@@ -18,7 +18,7 @@ struct QueryString {
     /// (removendo acentos e padronizando caracteres
     /// unicode).
     init(_ from: String) {
-        let text = Self.normalizeQueryText(from)
+        let text = from.normalized().splitWords().joined(separator: " ")
 
         self.content = ContiguousArray(text.utf8CString)
         self.length = self.content.withUnsafeBufferPointer {
@@ -28,32 +28,27 @@ struct QueryString {
 
     /// Acessa o pointeiro e o tamanho da string,
     /// para trabalhar com C.
-    fileprivate func withUnsafePointer<R>(_ body: (UnsafePointer<CChar>, Int) throws -> R) rethrows -> R {
+    func withUnsafePointer<R>(_ body: (UnsafePointer<CChar>, Int) throws -> R) rethrows -> R {
         try self.content.withUnsafeBufferPointer {
             try body($0.baseAddress!, self.length)
         }
-    }
-
-    /// Faz a normalização descrita em `init`.
-    fileprivate static func normalizeQueryText(_ string: String) -> String {
-        return string.normalized().splitWords().joined(separator: " ")
     }
 }
 
 /// Cache dos campos de uma estrutura ou classe
 /// usados para comparação com uma string de
 /// busca usando fuzzy matching.
-struct FuzzyCache {
-    /// Campos no cache.
-    private let fields: [FuzzyField]
+struct FuzzyCache<Provider: ScoreProvider> {
+    /// Campos no cache, com seu peso associado, para combinação de scores.
+    private let fields: [(textValue: Provider, weight: Double)]
 
     /// Inicializa cache com lista de campos da struct
     /// extraindo o valor textual e o peso do campo.
     @inlinable
     init<Item: Searchable>(for item: Item) {
         self.fields = Item.properties.map { field in
-            return FuzzyField(
-                value: field.get(from: item),
+            (
+                textValue: Provider(value: field.get(from: item)),
                 weight: field.weight / Item.totalWeight
             )
         }
@@ -67,29 +62,37 @@ struct FuzzyCache {
     func fullScore(for query: QueryString) -> Double {
         // de https://github.com/krisk/Fuse/blob/master/src/core/computeScore.js
         return self.fields.reduce(1.0) { (totalScore, field) in
-            let score = field.score(for: query)
+            let score = field.textValue.score(for: query)
             return totalScore * pow(score, field.weight)
         }
     }
 }
 
+/// Um provedor de score, inicializado com uma string
+/// para comparar com outras quando necessário.
+protocol ScoreProvider {
+    /// Constrói a partir da string a ser avaliada.
+    init(value: String)
+    /// Calcula o score para uma comparação.
+    func score(for query: QueryString) -> Double
+}
+
 /// Wrapper para fazzy matching de strings usando a biblioteca
 /// [RapidFuzz](https://github.com/maxbachmann/rapidfuzz-cpp).
-private final class FuzzyField {
+final class FuzzyField: ScoreProvider {
     /// Struct em C++ (com interface em C).
     private var cached: FuzzCachedRatio
-    /// Peso associado ao campo, para combinação de scores.
-    let weight: Double
 
     /// Constrói cache de `value` para comparação com outras
     /// strings e calcula a norma do campo.
     @inlinable
-    init(value: String, weight: Double) {
-        let text = QueryString.normalizeQueryText(value)
+    init(value: String) {
+        let text = QueryString(value)
 
-        self.weight = weight
         // constroi com a API de C++
-        self.cached = text.withCString { fuzz_cached_init($0) }
+        self.cached = text.withUnsafePointer { pointer, _ in
+            fuzz_cached_init(pointer)
+        }
     }
 
     /// Precisa desalocar a memória em C++.

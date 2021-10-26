@@ -59,7 +59,7 @@ public struct Database<Item: Searchable> {
     /// Campo de ordenação.
     private static var sortedOn: Field? { Item.sortOn }
     /// Par struct e sua cache de fuzzy matching.
-    private typealias Entry = (item: Item, cache: FuzzyCache)
+    private typealias Entry = (item: Item, cache: FuzzyCache<FuzzyField>)
 
     /// Conjunto de dados.
     private let entries: [Entry]
@@ -70,7 +70,7 @@ public struct Database<Item: Searchable> {
     private static func buildEntries(for data: [Item]) -> [Entry] {
         /// monta cache de cada dado
         var entries = data.concurrentMap { item in
-            Entry(item, FuzzyCache(for: item))
+            Entry(item, FuzzyCache<FuzzyField>(for: item))
         }
         // ordena se requisitado
         if let field = Item.sortOn {
