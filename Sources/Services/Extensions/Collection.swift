@@ -1,3 +1,10 @@
+//
+//  File.swift
+//  
+//
+//  Created by Vitor Jundi Moriya on 25/10/21.
+//
+
 import Foundation
 
 public extension Collection {
@@ -19,40 +26,6 @@ public extension Collection {
         } else {
             return nil
         }
-    }
-}
-
-/// Mutex que cobre um valor.
-///
-/// # Obsercação
-///
-/// Não é seguro em usos gerais.
-private struct Mutex<T> {
-    private let inner = NSLock()
-    private var value: T
-
-    @inlinable
-    init(_ value: T) {
-        self.value = value
-    }
-
-    /// Executa uma ação com controle da mutex.
-    @inlinable
-    mutating func withLock<U>(perform: (inout T) throws -> U) rethrows -> U {
-        self.inner.lock()
-        defer { self.inner.unlock() }
-
-        return try perform(&self.value)
-    }
-
-    /// Acessa o valor, sem trancar a mutex.
-    ///
-    /// # Cuidado
-    ///
-    /// Usar apenas após todas as operações com a mutex.
-    @inlinable
-    func get() -> T {
-        self.value
     }
 }
 
@@ -216,82 +189,31 @@ extension RandomAccessCollection where Index: BinaryInteger {
     }
 }
 
-/// Localização POSIX para remoção de acentos.
-private let usPosixLocale = Locale(identifier: "en_US_POSIX")
+private struct Mutex<T> {
+    private let inner = NSLock()
+    private var value: T
 
-extension StringProtocol {
-    /// Remove a extensão do nome do arquivo.
-    ///
-    /// ```swift
-    /// "arquivo.py".strippedExtension() == "arquivo"
-    /// ```
     @inlinable
-    func strippedExtension() -> String {
-        var components = self.components(separatedBy: ".")
-        if components.count > 1 {
-            components.removeLast()
-        }
-        return components.joined(separator: ".")
+    init(_ value: T) {
+        self.value = value
     }
 
-    /// Normalização da String para comparação.
-    ///
-    /// Remove acentos e padroniza a String para não ter diferença
-    /// entre maiúsculas e minúsculas, além de tratar problemas de
-    /// representação com Unicode.
-    func normalized() -> String {
-        // de https://forums.swift.org/t/string-case-folding-and-normalization-apis/14663/7
-        self.folding(
-            options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
-            locale: usPosixLocale
-        )
-    }
-
-    /// Lista de palavras na string.
-    ///
-    /// Ignora espeços consecutivos.
+    /// Executa uma ação com controle da mutex.
     @inlinable
-    func splitWords() -> [String] {
-        self.components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }
-    }
-}
+    mutating func withLock<U>(perform: (inout T) throws -> U) rethrows -> U {
+        self.inner.lock()
+        defer { self.inner.unlock() }
 
-extension Double {
-    /// Limita o valor para o range `[min, max]`.
+        return try perform(&self.value)
+    }
+
+    /// Acessa o valor, sem trancar a mutex.
     ///
-    /// - Returns: O valor dentro do intervalo fechado
-    ///  `[min, max]` que está mais próximo de `self`.
+    /// # Cuidado
+    ///
+    /// Usar apenas após todas as operações com a mutex.
     @inlinable
-    func clamped(from min: Double = -Self.infinity, upTo max: Double = Self.infinity) -> Double {
-        if self <= min {
-            return min
-        } else if self >= max {
-            return max
-        } else {
-            return self
-        }
+    func get() -> T {
+        self.value
     }
-}
-
-/// Executa a função, marcando o tempo demorado.
-///
-/// - Returns: tempo demorado e valor retornado.
-@inlinable
-public func withTiming<T>(run: () throws -> T) rethrows -> (elapsed: Double, value: T) {
-    let start = DispatchTime.now()
-    let value = try run()
-    let end = DispatchTime.now()
-
-    let diff = end.uptimeNanoseconds - start.uptimeNanoseconds
-    let elapsed = Double(diff) / 1E9
-    return (elapsed, value)
-}
-
-/// Executa a função, marcando o tempo demorado.
-///
-/// - Returns: tempo demorado.
-@inlinable
-public func withTiming(run: () throws -> Void) rethrows -> Double {
-    try withTiming(run: run).elapsed
 }
