@@ -20,11 +20,29 @@ public func configure(_ app: Application) throws {
         encoder.outputFormatting.formUnion([.sortedKeys, .prettyPrinted])
         ContentConfiguration.global.use(encoder: encoder, for: .json)
     }
-    // recupera dados por scraping
-    app.storage[ScrapedData.self] = try .init(app)
+    
+    try initializeControllers(app)
+    
     // register routes
     try routes(app)
 }
+
+private func initializeControllers(_ app: Application) throws {
+    // Inicia thread para preparar os dados.
+    // Pega instância de singleton pela primeira vez para
+    // carregar os dados de forma assíncrona.
+    // `.shared` é lazy por ser estático, e por isso
+    // roda de forma assíncrona abaixo.
+    let disciplines = app.async {
+        Discipline.Controller.shared
+    }
+    let courses = app.async {
+        Course.Controller.shared
+    }
+    let _ = try disciplines.wait()
+    let _ = try courses.wait()
+}
+
 
 extension Application {
     /// Executa closure assincronamente em `eventLoop`.
@@ -49,68 +67,3 @@ extension ContentConfiguration {
     }
 }
 
-extension Request {
-    /// Dados recuperados por scraping.
-    var scrapedData: ScrapedData {
-        // SAFETY: sempre vai estar inicializado em Request
-        self.application.storage[ScrapedData.self]!
-    }
-}
-
-/// Controlador de dados recuperados por Web Scraping.
-final class ScrapedData: StorageKey {
-    typealias Value = ScrapedData
-    /// Logger da aplicação, para reutilizar depois.
-    private let logger: Logger
-
-    fileprivate init(_ app: Application) throws {
-        // Inicia thread para preparar os dados.
-        // Pega instância de singleton pela primeira vez para
-        // carregar os dados de forma assíncrona.
-        // `.shared` é lazy por ser estático, e por isso
-        // roda de forma assíncrona abaixo.
-        let disciplines = app.async {
-            Discipline.Controller.shared
-        }
-        let courses = app.async {
-            Course.Controller.shared
-        }
-        let _ = try disciplines.wait()
-        let _ = try courses.wait()
-
-        self.logger = app.logger
-    }
-
-    /// Recupera uma disciplina pelo seu código.
-    func getDiscipline(with code: String) -> Discipline? {
-        Discipline.Controller.shared.get(code: code)
-    }
-
-    /// Recupera um curso pelo seu código.
-    func getCourse(with code: String) -> Course? {
-        Course.Controller.shared.get(code: code)
-    }
-
-    /// Busca textual dentre os dados carregados na memória.
-    ///
-    /// - Returns: Os `limit` melhores scores dentre todos os
-    ///   os conjuntos de dados, mas com score menor que
-    ///   `maxScore`.
-    func search(for text: String, limitingTo limit: Int, maxScore: Double) -> [Match]  {
-        let (elapsed, matches) = withTiming { () -> [Match] in
-            let disciplinesResult = Discipline.Controller.shared.search(for: text, limitedTo: limit, upTo: maxScore)
-            let coursesResult = Course.Controller.shared.search(for: text, limitedTo: limit, upTo: maxScore)
-            return mergeAndSortSearchResults(results: [disciplinesResult, coursesResult], limitingTo: limit)
-        }
-        self.logger.info("Searched for \"\(text)\" with \(matches.count) results in \(elapsed) secs.")
-
-        return matches
-    }
-
-    /// Junta vários resultados de busca em um só array.
-    private func mergeAndSortSearchResults(results: [[Match]], limitingTo limit: Int) -> [Match] {
-        var allResults = results.flatMap { $0 }
-        allResults.sort { $0.score }
-        return Array(allResults.prefix(limit))
-    }
-}

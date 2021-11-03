@@ -24,13 +24,41 @@ extension Course {
         }
 
         /// Recupera curso por código.
-        func get(code: String) -> Course? {
+        private func findCourseWith(code: String) -> Course? {
             self.db.find(.code, equals: code)
         }
 
         /// Busca apenas entre os cursos.
         func search(for text: String, upTo maxScore: Double) -> [(item: Course, score: Double)] {
             self.db.search(text, upTo: maxScore)
+        }
+        
+        func fetchCourse(_ req: Request) throws -> Course {
+            // SAFETY: o router do Vapor só deixa chegar aqui com o parâmetro
+            let code = req.parameters.get("code")!
+            
+            if let course = self.findCourseWith(code: code) {
+                return course
+                
+            } else {
+                throw Abort(.notFound)
+            }
+        }
+        
+        func fetchCourseTree(_ req: Request) throws -> CourseTree {
+            // SAFETY: o router do Vapor só deixa chegar aqui com o parâmetro
+            let code = req.parameters.get("code")!
+            let variant = req.parameters.get("variant")!
+            
+            guard
+                let index = Int(variant),
+                let course = self.findCourseWith(code: code),
+                let tree = course.getTree(forIndex: index)
+            else {
+                throw Abort(.notFound)
+            }
+            
+            return tree
         }
     }
 }
