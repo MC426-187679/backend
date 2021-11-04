@@ -1,6 +1,6 @@
 //
 //  File.swift
-//  
+//
 //
 //  Created by Vitor Jundi Moriya on 25/10/21.
 //
@@ -43,5 +43,11 @@ extension StringProtocol {
     func splitWords() -> [String] {
         self.components(separatedBy: .whitespacesAndNewlines)
             .filter { !$0.isEmpty }
+    }
+
+    /// Prepara para busca, normalizando e removendo
+    /// espaços desnecessários.
+    func prepareForSearch() -> String {
+        self.normalized().splitWords().joined(separator: " ")
     }
 }

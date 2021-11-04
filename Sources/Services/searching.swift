@@ -59,7 +59,7 @@ public struct Database<Item: Searchable> {
     /// Campo de ordenação.
     private static var sortedOn: Field? { Item.sortOn }
     /// Par struct e sua cache de fuzzy matching.
-    private typealias Entry = (item: Item, cache: FuzzyCache<FuzzyField>)
+    private typealias Entry = (item: Item, cache: SearchCache<FuzzyField>)
 
     /// Conjunto de dados.
     private let entries: [Entry]
@@ -70,7 +70,7 @@ public struct Database<Item: Searchable> {
     private static func buildEntries(for data: [Item]) -> [Entry] {
         /// monta cache de cada dado
         var entries = data.concurrentMap { item in
-            Entry(item, FuzzyCache<FuzzyField>(for: item))
+            Entry(item, SearchCache<FuzzyField>(for: item))
         }
         // ordena se requisitado
         if let field = Item.sortOn {
@@ -146,9 +146,11 @@ public struct Database<Item: Searchable> {
     ///
     /// - Returns: Os dados com score menor que `maxScore`,
     ///   e o seu score para a string de busca.
-    private func search(_ query: QueryString, upTo maxScore: Double) -> [(item: Item, score: Double)] {
+    public func search(_ text: String, upTo maxScore: Double) -> [(item: Item, score: Double)] {
+        // Prepara o texto que será buscado.
+        let searchText = text.prepareForSearch()
         return self.entries.compactMap { (item, cache) in
-            let score = cache.fullScore(for: query)
+            let score = cache.fullScore(for: searchText)
 
             if score < maxScore {
                 return (item, score)
@@ -157,14 +159,50 @@ public struct Database<Item: Searchable> {
             }
         }
     }
+}
 
-    /// Busca textual no conjunto de dados.
-    ///
-    /// - Returns: Os dados com score menor que `maxScore`,
-    ///   e o seu score para a string de busca.
-    public func search(_ text: String, upTo maxScore: Double) -> [(item: Item, score: Double)] {
-        self.search(QueryString(text), upTo: maxScore)
+/// Cache dos campos de uma estrutura ou classe
+/// usados para comparação com uma string de
+/// busca usando um provedor de score qualquer.
+struct SearchCache<Provider: ScoreProvider> {
+    /// Campos no cache, com seu peso associado, para combinação de scores.
+    private let fields: [(textValue: Provider, weight: Double)]
+
+    /// Inicializa cache com lista de campos da struct
+    /// extraindo o valor textual e o peso do campo.
+    @inlinable
+    init<Item: Searchable>(for item: Item) {
+        self.fields = Item.properties.map { field in
+            // Cria o provedor de score, preparando a string.
+            let fieldScoreProvider = Provider(value: field.get(from: item).prepareForSearch())
+            return (
+                textValue: fieldScoreProvider,
+                weight: field.weight / Item.totalWeight
+            )
+        }
     }
+
+    /// Score combinado dos campos da struct para a string de busca.
+    ///
+    /// - Returns: Score entre da struct que varia entre
+    ///   0 (match perfeito) e 1 (completamente diferentes).
+    @inlinable
+    func fullScore(for text: String) -> Double {
+        // de https://github.com/krisk/Fuse/blob/master/src/core/computeScore.js
+        return self.fields.reduce(1.0) { (totalScore, field) in
+            let score = field.textValue.score(for: text)
+            return totalScore * pow(score, field.weight)
+        }
+    }
+}
+
+/// Um provedor de score, inicializado com uma string
+/// para comparar com outras quando necessário.
+protocol ScoreProvider {
+    /// Constrói a partir da string a ser avaliada.
+    init(value: String)
+    /// Calcula o score para uma comparação.
+    func score(for query: String) -> Double
 }
 
 /// Erro para tipos `Searchable` mas com peso negativo ou zero.
