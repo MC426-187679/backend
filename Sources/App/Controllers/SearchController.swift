@@ -1,6 +1,6 @@
 //
 //  SearchController.swift
-//  
+//
 //
 //  Created by Erick Manaroulas Felipe on 28/10/21.
 //
@@ -10,9 +10,13 @@ import Vapor
 import Services
 
 internal final class SearchController {
-    
+
     /// Logger da aplicação, para reutilizar depois.
     private let logger: Logger = .controllerLogger
+    /// Limite de busca usado quando não especificado.
+    private static let defaultSearchLimit = 100
+    /// Limite máximo de busca.
+    static let maxSearchLimit = 1000
     static let shared = SearchController()
 
     private init() { }
@@ -22,21 +26,25 @@ internal final class SearchController {
         let query: String
         let limit: Int?
     }
-    
+
     func searchFor(_ req: Request) throws -> EventLoopFuture<[Match]> {
-        
         let params = try req.query.decode(SearchParams.self)
+        let limit = min(params.limit ?? Self.defaultSearchLimit, Self.maxSearchLimit)
+        guard limit > 0 else {
+            throw Abort(.badRequest)
+        }
+
         // roda em async para não travar a aplicação
         // https://docs.vapor.codes/4.0/async/#blocking
         return req.application.async(on: req.eventLoop) {
             self.search(
                 for: params.query,
-                limitingTo: params.limit ?? 100,
+                limitingTo: min(params.limit ?? Self.defaultSearchLimit, Self.maxSearchLimit),
                 maxScore: 0.99
             )
         }
     }
-    
+
     /// Busca textual dentre os dados carregados na memória.
     ///
     /// - Returns: Os `limit` melhores scores dentre todos os
