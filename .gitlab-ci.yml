@@ -13,6 +13,8 @@ variables:
   # Builder image to deploy for building
   BUILDER_IMAGE: $CI_REGISTRY/$CI_PROJECT_PATH/builder
   SKIP_BUILDER_IMAGE: "false"
+  # Image with compilation cache
+  BUILT_IMAGE: $CI_REGISTRY/$CI_PROJECT_PATH/built
   # Slim server image to be used in integration
   DEPLOY_IMAGE: $CI_REGISTRY/$CI_PROJECT_PATH/deploy
 
@@ -39,37 +41,12 @@ workflow:
     - docker push $IMAGE:$DEPLOY_TAG
   cache: []
 
-# Template for jobs that preload data from scraping
-.preload-template: &preload-template
-  image: $BUILDER_IMAGE:$DEPLOY_TAG
-  before_script:
-    - mkdir -p .build/scraping/$CONTENT
-  script:
-    - python3 Scraping/$CONTENT.py .build/scraping/$CONTENT
-  artifacts:
-    name: "$CONTENT-cache"
-    paths:
-      - .build/scraping/$CONTENT
-    expire_in: 1 hour
-  cache: []
-  needs: &use-builder-image
-    - job: builder-image
-      optional: true
-      artifacts: false
-
-# Template for test jobs
-.test-template: &test-template
-  image: $BUILDER_IMAGE:$DEPLOY_TAG
-  variables: &use-submodules
-    GIT_SUBMODULE_STRATEGY: recursive
-    LOG_LEVEL: debug
-  script:
-    - swift test -c $OPT_LEVEL
-  cache: &use-build-cache
-      key: build-folder
-      paths:
-        - .build/
-      policy: pull
+.swift-built-template: &swift-built-template
+    image: $BUILT_IMAGE:$DEPLOY_TAG
+    variables:
+      GIT_SUBMODULE_STRATEGY: recursive
+      LOG_LEVEL: debug
+    script: []
 
 # Build image that contains the dependencies for building the server
 builder-image:
@@ -90,62 +67,72 @@ builder-image:
 # Main build job
 build-release:
   stage: build
-  image: $BUILDER_IMAGE:$DEPLOY_TAG
+  <<: *docker-template
   variables:
-    <<: *use-submodules
+    GIT_SUBMODULE_STRATEGY: recursive
+    IMAGE: $BUILDER_IMAGE
+    CONTAINER: planejador
+  before_script:
+    - *docker-login
+    - docker create -i --name $CONTAINER $IMAGE:$DEPLOY_TAG
+    - docker start $CONTAINER
   script:
-    - swift build -c release
-    - cp "$(swift build -c release --show-bin-path)/Run" Run
+    # prepare local source
+    - docker cp Sources/ $CONTAINER:/build/Sources
+    - docker cp Tests/ $CONTAINER:/build/Tests
+    - docker cp .swiftlint.yml $CONTAINER:/build/
+    # build swift with cache
+    - docker exec -i $CONTAINER swift build -c release
+    - export EXECUTABLE=$(docker exec -i $CONTAINER swift build -c release --show-bin-path)/Run
+    - docker exec -i $CONTAINER $EXECUTABLE build-cache
+    - docker commit $CONTAINER $BUILT_IMAGE:$DEPLOY_TAG
+    - docker push $BUILT_IMAGE:$DEPLOY_TAG
+    # get artifacts out of of the container
+    - docker cp $CONTAINER:"$EXECUTABLE" ./Run
+    - docker cp $CONTAINER:/build/Resources/ ./Resources
   artifacts:
-    name: "binary-app"
+    name: "binary-and-cache"
     paths:
       - Run
+      - Resources/Cache/
     expire_in: 1 hour
-  cache:
-    <<: *use-build-cache
-    policy: push
-  needs: *use-builder-image
+  needs:
+    - job: builder-image
+      optional: true
+      artifacts: false
 
-# Preload disciplines from scraping
-preload-disciplines:
-  stage: build
-  <<: *preload-template
-  variables:
-    CONTENT: disciplines
-
-# Preload courses from scraping
-preload-courses:
-  stage: build
-  <<: *preload-template
-  variables:
-    CONTENT: courses
+# Lint source files
+swift-lint:
+  stage: test
+  <<: *swift-built-template
+  script:
+    - swiftlint
+  needs:
+    - job: build-release
+      artifacts: false
 
 # Main test job
 test-release-version:
   stage: test
-  <<: *test-template
-  variables:
-    <<: *use-submodules
-    OPT_LEVEL: release
+  <<: *swift-built-template
+  script:
+    - swift test -c release
   needs:
     - job: build-release
       artifacts: false
-    - job: preload-disciplines
-    - job: preload-courses
 
 # Test debug version if release tests fail
 test-debug-version:
   stage: test-debug
-  <<: *test-template
-  variables:
-    <<: *use-submodules
-    OPT_LEVEL: debug
-  before_script:
-    - swift build -c $OPT_LEVEL
+  <<: *swift-built-template
+  script:
+    - swift build -c debug
+    - swift test -c debug
   when: on_failure
   needs:
     - job: test-release-version
       optional: true
+      artifacts: false
 
 # Build server image to be used
 deploy-image:
@@ -154,10 +141,6 @@ deploy-image:
   variables:
     DOCKERFILE: Dockerfile
     IMAGE: $DEPLOY_IMAGE
-  before_script:
-    - *docker-login
-    - mv .build/scraping ScrapingCache
   needs:
     - job: build-release
-    - job: preload-disciplines
-    - job: preload-courses
+      artifacts: true

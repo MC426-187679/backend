@@ -6,5 +6,6 @@ DerivedData/
 .DS_Store
 db.sqlite
 .swiftpm
+Resources/Cache/
 Public/
 .vscode/

@@ -5,7 +5,7 @@ FROM swift:5.5.1-focal as build
 RUN export DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true \
     && apt-get -q update \
     && apt-get -q dist-upgrade -y \
-    && apt-get -q install -y python3 python3-bs4 python3-requests unzip \
+    && apt-get -q install -y unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # Install swiftlint binary

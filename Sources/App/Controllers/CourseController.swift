@@ -1,45 +1,67 @@
 import Foundation
-import Services
 import Vapor
+
+extension Application {
+    /// Instância compartilhada do singleton.
+    var courses: Course.Controller {
+        get async throws {
+            try await self.instance(controller: Course.Controller.self)
+        }
+    }
+}
+
+extension Request {
+    /// Instância compartilhada do singleton.
+    var courses: Course.Controller {
+        get async throws {
+            try await self.application.courses
+        }
+    }
+}
 
 extension Course {
     /// Controlador dos cursos recuperados por Scraping.
     ///
-    /// Classe singleton. Usar `.shared` para pegar instância.
-    final class Controller: ContentController<Course> {
-
-        /// Instância compartilhada do singleton.
-        ///
-        /// Por ser estática, é lazy por padrão, ou seja,
-        /// o database será criado apenas na primeira chamada.
-        static let shared = try! Controller()
+    /// Classe singleton. Usar `app.courses` para pegar instância.
+    struct Controller: ContentController {
+        private let courses: [String: Course]
 
         /// Inicializador privado do singleton.
-        private init() throws {
-            let data = try Course.scrape(logger: .controllerLogger)
-            try super.init(entries: Array(data.values), logger: .controllerLogger)
+        init(content: [Course]) {
+            self.courses = Dictionary(uniqueKeysWithValues: content.map { course in
+                (code: course.code, course)
+            })
         }
 
         /// Recupera curso por código.
-        
-        func fetchCourse(_ req: Request) throws -> Course {
-            try fetchContent(on: .code, req)
+        func fetchCourse(code: String) throws -> Course.Preview {
+            guard let course = self.courses[code] else {
+                throw Abort(.notFound)
+            }
+
+            return Preview(code: course.code, name: course.name, variants: course.variantNames)
         }
-        
-        func fetchCourseTree(_ req: Request) throws -> CourseTree {
-            // SAFETY: o router do Vapor só deixa chegar aqui com o parâmetro
-            let variant = req.parameters.get("variant")!
-            
-            let course = try self.fetchCourse(req)
-            
+
+        /// Recupera árvore por código e índice.
+        func fetchCourseTree(code: String, variant: String) throws -> Course.Tree {
+            guard let index = Int(variant) else {
+                throw Abort(.badRequest)
+            }
             guard
-                let index = Int(variant),
-                let tree = course.getTree(forIndex: index)
+                let course = self.courses[code],
+                let tree = course.trees.get(at: index)
             else {
                 throw Abort(.notFound)
             }
-            
+
             return tree
         }
+    }
+
+    /// Resumo do curso, sem as árvores.
+    struct Preview: Content {
+        let code: String
+        let name: String
+        let variants: [String]
     }
 }

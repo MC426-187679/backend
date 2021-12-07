@@ -2,7 +2,7 @@
 import XCTVapor
 import XCTest
 
-final class SearchAPITests: XCTestCase {
+final class SearchAPITests: APITestCase {
 
     // MARK: - Montagem da URL do curso
 
@@ -36,7 +36,8 @@ final class SearchAPITests: XCTestCase {
     }
 
     func testSearchWithEmptyQuery() throws {
-        try assertJsonResult(on: url(search: ""), matches: [])
+        let defaultLimit = SearchParams.configuration.defaultSearchLimit
+        try assertJsonSize(on: url(search: ""), size: Int(defaultLimit))
     }
 
     func testSearchWithNegativeLimit() throws {
@@ -44,41 +45,42 @@ final class SearchAPITests: XCTestCase {
     }
 
     func testSearchWithZeroLimit() throws {
-        try assertBadRequest(on: url(search: "mc102", limit: "0"))
+        try assertJsonResult(on: url(search: "mc102", limit: "0"), matches: [])
     }
 
     func testSearchWithValidDisciplineCodeAndLimit() throws {
-        let limit = SearchController.maxSearchLimit - 1
-        try assertJsonSize(on: url(search: "mc102", limit: "\(limit)"), size: limit)
+        let limit = SearchParams.configuration.maxSearchLimit - 1
+        try assertJsonSize(on: url(search: "mc102", limit: "\(limit)"), size: Int(limit))
     }
 
     func testSearchWithValidDisciplineCodeAndHugeLimit() throws {
-        let limit = SearchController.maxSearchLimit + 1
-        try assertJsonSize(on: url(search: "mc102", limit: "\(limit)"), size: SearchController.maxSearchLimit)
+        let limit = SearchParams.configuration.maxSearchLimit + 1
+        try assertJsonSize(
+            on: url(search: "mc102", limit: "\(limit)"),
+            size: Int(SearchParams.configuration.maxSearchLimit)
+        )
     }
 
     // MARK: - Testes Qualitativos
 
     func testSearchQuality() throws {
-        let app = Application(.testing)
-        defer { app.shutdown() }
-        try configure(app)
-
         // Pega uma disciplina aleatória do curso 34 e segunda proficiência
         try app.test(.GET, url(course: "34", variant: "2"), afterResponse: { res in
             let courseDisc = JSONValue(fromJson: res.body.string)?.asArray()
-            let randomSemester = courseDisc?.randomElement()?.asArray()
-            let randomDiscipline = randomSemester?.randomElement()?.asString()
-            XCTAssertNotNil(randomDiscipline)
-            let discUrl = self.url(search: randomDiscipline!, limit: "10")
+            let randomSemester = courseDisc?.randomElement()?.asObject() ?? [:]
+            let randomDiscipline = randomSemester["disciplines"]?.asArray()?.randomElement()?.asObject() ?? [:]
+            let randomCode = randomDiscipline["code"]?.asString() ?? ""
+            XCTAssertNotEqual(randomCode, "")
+
+            let discUrl = self.url(search: randomCode, limit: "10")
 
             // Faz uma busca com a disciplina aleatória e verifica se é a primeira da pesquisa
             try app.test(.GET, discUrl, afterResponse: { res in
                 XCTAssertEqual(res.status, .ok)
                 XCTAssertEqual(res.content.contentType, .json)
-                let disc = JSONValue(res.body.string)?.asArray()?.first?.asObject()
-                XCTAssertNotNil(disc)
-                XCTAssertEqual(disc!["code"]?.asString(), randomDiscipline!)
+                let disc = JSONValue(fromJson: res.body.string)?.asArray()?.first?.asObject() ?? [:]
+                XCTAssertNotEqual(disc, [:])
+                XCTAssertEqual(disc["code"]?.asString(), randomCode)
             })
         })
 

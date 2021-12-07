@@ -7,7 +7,6 @@ RUN useradd --user-group --create-home --system --skel /dev/null --home-dir /app
 RUN export DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true \
     && apt-get -q update \
     && apt-get -q dist-upgrade -y \
-    && apt-get -q install -y python3 python3-requests python3-bs4 \
     && rm -rf /var/lib/apt/lists/*
 
 # Switch to the new home directory
@@ -15,8 +14,7 @@ WORKDIR /app
 
 # Copy built executable and any staged resources from builder
 COPY --chown=vapor:vapor ./Run /app/Run
-COPY --chown=vapor:vapor ./Scraping /app/Scraping
-COPY --chown=vapor:vapor ./ScrapingCache /app/.build/scraping
+COPY --chown=vapor:vapor ./Resources /app/Resources
 
 # Ensure all further commands run as the vapor user
 USER vapor:vapor

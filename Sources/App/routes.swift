@@ -1,7 +1,6 @@
 import Vapor
 
-
-func routes(_ app: RoutesBuilder) throws {
+func routes(_ app: RoutesBuilder) {
     // Página principal: carrega o frontend
     app.get("") { req in
         getIndexHTML(for: req)
@@ -24,32 +23,41 @@ private func getIndexHTML(for req: Request) -> Response {
 /// Rotas usadas pela API.
 private func api_routes(_ api: RoutesBuilder) {
     // API: resposta padrão
-    api.get("") { req -> Response in
+    api.get("") { _ -> Response in
         throw Abort(.noContent)
     }
 
     // API: busca textual entre vários elementos.
     api.get("busca") { req in
-        try SearchController.shared.searchFor(req)
+        await req.searchController.searchFor(
+            params: try req.query.decode(SearchParams.self)
+        )
     }
 
     // API: dados para a página de uma disciplina
     api.get("disciplina", ":code") { req in
-        try Discipline.Controller.shared.fetchDiscipline(req)
+        try await req.disciplines.fetchDiscipline(
+            code: try req.parameters.require("code")
+        )
     }
 
     // API: dados para a página de um curso
     api.get("curso", ":code") { req in
-        try Course.Controller.shared.fetchCourse(req)
+        try await req.courses.fetchCourse(
+            code: try req.parameters.require("code")
+        )
     }
 
     // API: dados para a página de árvore do curso
     api.get("curso", ":code", ":variant") { req in
-        try Course.Controller.shared.fetchCourseTree(req)
+        try await req.courses.fetchCourseTree(
+            code: try req.parameters.require("code"),
+            variant: try req.parameters.require("variant")
+        )
     }
 
     // API: desconhecida
-    api.get("**") { req -> Response in
+    api.get("**") { _ -> Response in
         throw Abort(.badRequest)
     }
 }
