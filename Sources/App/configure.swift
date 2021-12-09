@@ -1,70 +1,52 @@
 import Foundation
 import Vapor
-import Services
-
-/// Future usada em Vapor e NIO.
-typealias Future<T> = EventLoopFuture<T>
 
 // configures your application
 public func configure(_ app: Application) throws {
+    // config do servidor
     app.http.server.configuration.serverName = "Planejador de Disciplinas"
+    if case .production = app.environment {
+        app.http.server.configuration.responseCompression = .enabled
+    }
+    // config do client
+    app.http.client.configuration.httpVersion = .http1Only
+    app.http.client.configuration.connectionPool.concurrentHTTP1ConnectionsPerHostSoftLimit = 24
     app.http.server.configuration.hostname = "0.0.0.0"
-    // serve files from /Public folder
+
+    // serve arquivo da pasta /Public
     app.middleware.use(FileMiddleware(publicDirectory: app.directory.publicDirectory))
 
-    // quando em modo de desenvolvimento
+    // formata melhor o JSON no modo de desenvolvimento
     if case .development = app.environment {
-        // envia scores nas matches da busca
-        Match.encodeScoresForSending()
-        // formata JSON com chaves ordenadas e identadas
-        let encoder = ContentConfiguration.global.jsonEncoder ?? .init()
-        encoder.outputFormatting.formUnion([.sortedKeys, .prettyPrinted])
-        ContentConfiguration.global.use(encoder: encoder, for: .json)
+        enablePrettyPrintForJSON()
+        app.searchCache.configuration.sendHiddenFields = true
+        app.searchCache.configuration.sendScore = true
     }
-    
-    try initializeControllers(app)
-    
-    // register routes
-    try routes(app)
+
+    // inicalização dos controladores e das rotas
+    app.initialize(controller: Discipline.Controller.self)
+    app.initialize(controller: Course.Controller.self)
+    routes(app)
+
+    // comando para somente buildar o cache e sair
+    app.commands.use(BuildCache(), as: "build-cache")
 }
 
-private func initializeControllers(_ app: Application) throws {
-    // Inicia thread para preparar os dados.
-    // Pega instância de singleton pela primeira vez para
-    // carregar os dados de forma assíncrona.
-    // `.shared` é lazy por ser estático, e por isso
-    // roda de forma assíncrona abaixo.
-    let disciplines = app.async {
-        Discipline.Controller.shared
-    }
-    let courses = app.async {
-        Course.Controller.shared
-    }
-    let _ = try disciplines.wait()
-    let _ = try courses.wait()
+/// Formata output de JSON com chaves ordenadas e identadas.
+private func enablePrettyPrintForJSON() {
+    let encoder = ContentConfiguration.global.jsonEncoder ?? JSONEncoder()
+
+    encoder.outputFormatting.formUnion([.sortedKeys, .prettyPrinted])
+    ContentConfiguration.global.use(encoder: encoder, for: .json)
 }
 
+/// Comando para somente buildar o cache do web scraping e sair.
+struct BuildCache: Command {
+    struct Signature: CommandSignature { }
 
-extension Application {
-    /// Executa closure assincronamente em `eventLoop`.
-    func async<T>(on eventLoop: EventLoop, run: @escaping () throws -> T) -> Future<T> {
-        self.threadPool.runIfActive(eventLoop: eventLoop, run)
-    }
+    let help = "Run web scraping script, save cache and exit."
 
-    /// Executa closure assincronamente.
-    func async<T>(run: @escaping () throws -> T) -> Future<T> {
-        self.async(on: self.eventLoopGroup.next(), run: run)
+    func run(using context: CommandContext, signature: Signature) throws {
+        try context.application.waitInitialization()
     }
 }
-
-extension ContentConfiguration {
-    /// Encoder de JSON na configuração atual.
-    var jsonEncoder: JSONEncoder? {
-        do {
-            return try self.requireEncoder(for: .json) as? JSONEncoder
-        } catch {
-            return nil
-        }
-    }
-}
-

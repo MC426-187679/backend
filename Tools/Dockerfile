@@ -6,8 +6,7 @@ RUN export DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true \
     && apt-get -q update \
     && apt-get -q dist-upgrade -y \
     && apt-get -q upgrade -y \
-    && apt-get -q install -y python3 python3-bs4 python3-requests unzip \
-        zsh gcc make wget curl nano git build-essential
+    && apt-get -q install -y unzip zsh gcc make wget curl nano git build-essential
 
 # Install swiftlint binary
 COPY ./swiftlint /usr/bin/swiftlint

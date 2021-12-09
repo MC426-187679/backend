@@ -65,11 +65,6 @@ workflow:
     LOG_LEVEL: debug
   script:
     - swift test -c $OPT_LEVEL
-  cache: &use-build-cache
-      key: build-folder
-      paths:
-        - .build/
-      policy: pull
 
 # Build image that contains the dependencies for building the server
 builder-image:
@@ -96,29 +91,25 @@ build-release:
   script:
     - swift build -c release
     - cp "$(swift build -c release --show-bin-path)/Run" Run
+    - swift run -c relese Run build-cache
   artifacts:
-    name: "binary-app"
+    name: "binary-and-cache"
     paths:
       - Run
+      - Resources/Cache/
     expire_in: 1 hour
-  cache:
-    <<: *use-build-cache
-    policy: push
   needs: *use-builder-image
 
-# Preload disciplines from scraping
-preload-disciplines:
-  stage: build
-  <<: *preload-template
+# Lint source files
+swift-lint:
+  stage: test
+  <<: *test-template
   variables:
-    CONTENT: disciplines
-
-# Preload courses from scraping
-preload-courses:
-  stage: build
-  <<: *preload-template
-  variables:
-    CONTENT: courses
+  script:
+    - swiftlint
+  needs:
+    - job: build-release
+      artifacts: false
 
 # Main test job
 test-release-version:
@@ -129,9 +120,7 @@ test-release-version:
     OPT_LEVEL: release
   needs:
     - job: build-release
-      artifacts: false
-    - job: preload-disciplines
-    - job: preload-courses
+      artifacts: true
 
 # Test debug version if release tests fail
 test-debug-version:
@@ -144,6 +133,8 @@ test-debug-version:
     - swift build -c $OPT_LEVEL
   when: on_failure
   needs:
+    - job: build-release
+      artifacts: true
     - job: test-release-version
       optional: true
 
@@ -154,10 +145,6 @@ deploy-image:
   variables:
     DOCKERFILE: Dockerfile
     IMAGE: $DEPLOY_IMAGE
-  before_script:
-    - *docker-login
-    - mv .build/scraping ScrapingCache
   needs:
     - job: build-release
-    - job: preload-disciplines
-    - job: preload-courses
+      artifacts: true

@@ -1,5 +1,5 @@
-#ifndef __FUZZ_H__
-#define __FUZZ_H__
+#ifndef __RAPID_FUZZ_H__
+#define __RAPID_FUZZ_H__
 
 #include <stdint.h>
 #include <stddef.h>
@@ -7,14 +7,14 @@
 /**
  * Wrapper sobre o CachedRatio do rapidfuzz.
  */
-typedef struct FuzzCachedRatio {
+typedef struct RapidFuzzCachedRatio {
     // Buffer alocado no heap para controle da string.
     char *__restrict__ buffer;
     // Tamanho do buffer (e da string).
     size_t buflen;
     // Espaço para o CachedRatio.
     void *__restrict__ block;
-} FuzzCachedRatio;
+} RapidFuzzCachedRatio;
 
 /**
  * Inicializa o CachedRatio.
@@ -24,7 +24,7 @@ typedef struct FuzzCachedRatio {
  *
  * @return String cacheada para comparações.
  */
-FuzzCachedRatio fuzz_cached_init(const char *str)
+RapidFuzzCachedRatio rapidfuzz_cached_init(const char *str)
 __attribute__((nonnull, leaf, nothrow));
 
 /**
@@ -35,7 +35,7 @@ __attribute__((nonnull, leaf, nothrow));
  *
  * @return Score entre 0 (match perfeito) e 1 (completamente diferentes).
  */
-double fuzz_cached_ratio(const FuzzCachedRatio cached, const char *str, size_t len)
+double rapidfuzz_cached_ratio(const RapidFuzzCachedRatio cached, const char *str, size_t len)
 __attribute__((pure, nonnull, leaf, nothrow));
 
 /**
@@ -43,7 +43,7 @@ __attribute__((pure, nonnull, leaf, nothrow));
  *
  * @param cached string cacheada para comparações.
  */
-void fuzz_cached_deinit(FuzzCachedRatio *cached)
+void rapidfuzz_cached_deinit(RapidFuzzCachedRatio *cached)
 __attribute__((nonnull, leaf, nothrow));
 
 /**
@@ -51,7 +51,7 @@ __attribute__((nonnull, leaf, nothrow));
  *
  * @see https://maxbachmann.github.io/RapidFuzz/string_metric.html#normalized-levenshtein
  */
-double fuzz_levenshtein(const char *s1, size_t len1, const char *s2, size_t len2)
+double rapidfuzz_levenshtein(const char *s1, size_t len1, const char *s2, size_t len2)
 __attribute__((pure, nonnull, leaf, nothrow));
 
-#endif // __FUZZ_H__
+#endif // __RAPID_FUZZ_H__

@@ -13,12 +13,12 @@
 using CachedRatio = rapidfuzz::fuzz::RATIO_TYPE<std::string_view>;
 
 extern "C" {
-    #include "include/fuzz.h"
+    #include "include/rapidfuzz.h"
 
     static __attribute__((const, nothrow))
     /** Cache inicializado com ponteiros nulos. */
-    FuzzCachedRatio fuzz_cached_null(void) {
-        FuzzCachedRatio cached;
+    RapidFuzzCachedRatio rapidfuzz_cached_null(void) {
+        RapidFuzzCachedRatio cached;
         cached.buffer = NULL;
         cached.buflen = 0;
         cached.block = NULL;
@@ -26,15 +26,15 @@ extern "C" {
     }
 
     __attribute__((nonnull, leaf, nothrow))
-    FuzzCachedRatio fuzz_cached_init(const char *str) {
-        FuzzCachedRatio cache = fuzz_cached_null();
+    RapidFuzzCachedRatio rapidfuzz_cached_init(const char *str) {
+        RapidFuzzCachedRatio cache = rapidfuzz_cached_null();
 
         // tamanho da string no cache
         cache.buflen = strlen(str);
         // aloca nova string e copia conteúdo
         cache.buffer = (char *) malloc(cache.buflen + 1);
         if unlikely(cache.buffer == NULL) {
-            return fuzz_cached_null();
+            return rapidfuzz_cached_null();
         }
         memcpy(cache.buffer, str, cache.buflen);
         cache.buffer[cache.buflen] = 0;
@@ -47,7 +47,7 @@ extern "C" {
     }
 
     __attribute__((pure, nonnull, leaf, nothrow))
-    double fuzz_cached_ratio(const FuzzCachedRatio cached, const char *str, size_t len) {
+    double rapidfuzz_cached_ratio(const RapidFuzzCachedRatio cached, const char *str, size_t len) {
 
         if unlikely(cached.buffer == NULL || cached.block == NULL) {
             return 1;
@@ -61,7 +61,7 @@ extern "C" {
     }
 
     __attribute__((nonnull, leaf, nothrow))
-    void fuzz_cached_deinit(FuzzCachedRatio *cached) {
+    void rapidfuzz_cached_deinit(RapidFuzzCachedRatio *cached) {
         // destrói o cache primeiro
         if unlikely(cached->block != NULL) {
             auto block = (CachedRatio *) cached->block;
@@ -77,7 +77,7 @@ extern "C" {
     }
 
     __attribute__((pure, nonnull, leaf, nothrow))
-    double fuzz_levenshtein(const char *s1, size_t len1, const char *s2, size_t len2) {
+    double rapidfuzz_levenshtein(const char *s1, size_t len1, const char *s2, size_t len2) {
         // só chama a função do rapidfuzz
         double score = rapidfuzz::string_metric::normalized_levenshtein(
             std::string_view(s1, len1), std::string_view(s2, len2)

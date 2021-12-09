@@ -7,64 +7,102 @@
 
 import Foundation
 import Vapor
-import Services
 
-internal final class SearchController {
+extension Application {
+    /// Instância compartilhada do singleton.
+    var searchController: SearchController {
+        SearchController(app: self)
+    }
+}
 
-    /// Logger da aplicação, para reutilizar depois.
-    private let logger: Logger = .controllerLogger
+extension Request {
+    /// Instância compartilhada do singleton.
+    var searchController: SearchController {
+        self.application.searchController
+    }
+}
+
+/// Parâmetros de busca textual.
+struct SearchParams: Content {
+    let query: String
+    let limit: UInt?
+
+    static var configuration: SearchController.Configuration {
+        get { SearchController.Configuration.global }
+        set { SearchController.Configuration.global = newValue }
+    }
+
     /// Limite de busca usado quando não especificado.
-    private static let defaultSearchLimit = 100
+    var defaultSearchLimit: UInt {
+        Self.configuration.defaultSearchLimit
+    }
     /// Limite máximo de busca.
-    static let maxSearchLimit = 1000
-    static let shared = SearchController()
-
-    private init() { }
-
-    /// Parâmetros de busca textual.
-    struct SearchParams: Content {
-        let query: String
-        let limit: Int?
+    var maxSearchLimit: UInt {
+        Self.configuration.maxSearchLimit
     }
 
-    func searchFor(_ req: Request) throws -> EventLoopFuture<[Match]> {
-        let params = try req.query.decode(SearchParams.self)
-        let limit = min(params.limit ?? Self.defaultSearchLimit, Self.maxSearchLimit)
-        guard limit > 0 else {
-            throw Abort(.badRequest)
-        }
+    /// Limite a ser usado na busca.
+    var searchLimit: Int {
+        let limit = min(self.limit ?? self.defaultSearchLimit, self.maxSearchLimit)
+        return Int(clamping: limit)
+    }
+}
 
-        // roda em async para não travar a aplicação
-        // https://docs.vapor.codes/4.0/async/#blocking
-        return req.application.async(on: req.eventLoop) {
-            self.search(
-                for: params.query,
-                limitingTo: min(params.limit ?? Self.defaultSearchLimit, Self.maxSearchLimit),
-                maxScore: 0.99
-            )
+struct SearchController {
+    // MARK: - Configurações.
+
+    /// Configuração global do `SearchController`.
+    struct Configuration {
+        /// Limite de busca usado quando não especificado.
+        let defaultSearchLimit: UInt = 25
+        /// Limite máximo de busca. Note que o limite é 'soft' e não produz erros.
+        let maxSearchLimit: UInt = 100
+
+        /// Singleton que mantém a config global.
+        public static var global = Configuration()
+    }
+
+    /// Configuração global do `SearchController`.
+    @inlinable
+    var configuration: Configuration {
+        get { Configuration.global }
+        nonmutating set { Configuration.global = newValue }
+    }
+
+    private let app: Application
+
+    /// Incializa `SearchController` para a aplicação.
+    fileprivate init(app: Application) {
+        self.app = app
+    }
+
+    func searchFor(params: SearchParams) async -> [SearchResult] {
+        let (query, limit) = (params.query, params.searchLimit)
+
+        return await withTaskGroup(of: [SearchResult].self) { group in
+            group.addTask { self.app.searchCache.search(on: Discipline.self, for: query) }
+            group.addTask { self.app.searchCache.search(on: Course.self, for: query) }
+
+            return await self.mergeAndSortSearchResults(group, limitingTo: limit)
         }
     }
 
-    /// Busca textual dentre os dados carregados na memória.
-    ///
-    /// - Returns: Os `limit` melhores scores dentre todos os
-    ///   os conjuntos de dados, mas com score menor que
-    ///   `maxScore`.
-    private func search(for text: String, limitingTo limit: Int, maxScore: Double) -> [Match] {
-        let (elapsed, matches) = withTiming { () -> [Match] in
-            let disciplinesResult = Discipline.Controller.shared.search(for: text, limitedTo: limit, upTo: maxScore)
-            let coursesResult = Course.Controller.shared.search(for: text, limitedTo: limit, upTo: maxScore)
-            return mergeAndSortSearchResults(results: [disciplinesResult, coursesResult], limitingTo: limit)
-        }
-        self.logger.info("Searched for \"\(text)\" with \(matches.count) results in \(elapsed) secs.")
-
-        return matches
+    func searchFor(query: String, limit: UInt? = nil) async -> [SearchResult] {
+        await self.searchFor(params: SearchParams(query: query, limit: limit))
     }
 
     /// Junta vários resultados de busca em um só array.
-    private func mergeAndSortSearchResults(results: [[Match]], limitingTo limit: Int) -> [Match] {
-        var allResults = results.flatMap { $0 }
-        allResults.sort { $0.score }
-        return Array(allResults.prefix(limit))
+    private func mergeAndSortSearchResults(
+        _ resultGroup: TaskGroup<[SearchResult]>,
+        limitingTo limit: Int
+    ) async -> [SearchResult] {
+
+        var globalResults: ArraySlice<SearchResult> = []
+        for await results in resultGroup {
+            globalResults.append(contentsOf: results.prefix(limit))
+            globalResults.sort(by: { $0.score < $1.score })
+            globalResults = globalResults.prefix(limit)
+        }
+        return Array(globalResults)
     }
 }

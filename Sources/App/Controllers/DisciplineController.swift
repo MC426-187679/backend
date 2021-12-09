@@ -1,29 +1,44 @@
 import Foundation
-import Services
 import Vapor
+
+extension Application {
+    /// Instância compartilhada do singleton.
+    var disciplines: Discipline.Controller {
+        get async throws {
+            try await self.instance(controller: Discipline.Controller.self)
+        }
+    }
+}
+
+extension Request {
+    /// Instância compartilhada do singleton.
+    var disciplines: Discipline.Controller {
+        get async throws {
+            try await self.application.disciplines
+        }
+    }
+}
 
 extension Discipline {
     /// Controlador das disciplinas recuperadas por Scraping.
     ///
-    /// Classe singleton. Usar `.shared` para pegar instância.
-    final class Controller: ContentController<Discipline> {
+    /// Classe singleton. Usar `app.disciplines` para pegar instância.
+    struct Controller: ContentController {
+        private let disciplines: [String: Discipline]
 
-        /// Instância compartilhada do singleton.
-        ///
-        /// Por ser estática, é lazy por padrão, ou seja,
-        /// o database será criado apenas na primeira chamada.
-        static let shared = try! Controller()
-        
         /// Inicializador privado do singleton.
-        private init() throws {
-            let data = try Discipline.scrape(logger: .controllerLogger)
-            try super.init(entries: data.flatMap { $1 }, logger: .controllerLogger)
+        init(content: [Discipline]) {
+            self.disciplines = Dictionary(uniqueKeysWithValues: content.map { discipline in
+                (code: discipline.code, discipline)
+            })
         }
-        
+
         /// Busca apenas entre as disciplinas
-        func fetchDiscipline(_ req: Request) throws -> Discipline {
-            try fetchContent(on: .code, req)
+        func fetchDiscipline(code: String) throws -> Discipline {
+            guard let discipline = self.disciplines[code] else {
+                throw Abort(.notFound)
+            }
+            return discipline
         }
     }
-    
 }

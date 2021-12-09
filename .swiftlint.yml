@@ -1,0 +1,12 @@
+excluded:
+    - .build
+
+opt_in_rules:
+    - indentation_width
+
+switch_case_alignment:
+    indented_cases: true
+
+nesting:
+    type_level: 2
+    always_allow_one_type_in_functions: true

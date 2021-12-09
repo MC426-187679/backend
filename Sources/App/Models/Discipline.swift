@@ -1,47 +1,66 @@
 import Foundation
-import Services
 import Vapor
 
-
 /// Representação de uma matéria.
-struct Discipline: Content {
+struct Discipline: Content, Hashable, Sendable {
     /// Código da disciplina.
     let code: String
     /// Nome da disciplina.
     let name: String
     /// Número de créditos.
-    let credits: Int
+    let credits: UInt
     /// Grupos de requisitos da disciplina.
-    let reqs: [[Requirement]]?
+    let reqs: ArraySet<ArraySet<Requirement>>
     /// Disciplina que tem essa como requisito.
-    let reqBy: [String]?
+    let reqBy: ArraySet<String>
     /// Ementa da disciplina.
     let syllabus: String
-}
 
-/// Requisito de uma disciplina.
-struct Requirement: Content {
-    /// Código de requisito.
-    let code: String
-    /// Se o requisito é parcial.
-    let partial: Bool?
-    /// Se o requisito não é uma disciplina propriamente.
-    let special: Bool?
-}
+    /// Constrói nova disciplina com mesmo código e alguns campos modificados.
+    func update(
+        name: String? = nil,
+        credits: UInt? = nil,
+        reqs: ArraySet<ArraySet<Requirement>>? = nil,
+        reqBy: ArraySet<String>? = nil,
+        syllabus: String? = nil
+    ) -> Discipline {
+        .init(
+            code: self.code,
+            name: name ?? self.name,
+            credits: credits ?? self.credits,
+            reqs: reqs ?? self.reqs,
+            reqBy: reqBy ?? self.reqBy,
+            syllabus: syllabus ?? self.syllabus
+        )
+    }
 
-extension Discipline: WebScrapable {
-    static let scriptName = "disciplines.py"
-    typealias Output = [Self]
+    /// Requisito de uma disciplina.
+    struct Requirement: Content, Hashable, Comparable {
+        /// Código de requisito.
+        let code: String
+        /// Se o requisito é parcial.
+        let partial: Bool
+        /// Se o requisito não é uma disciplina propriamente.
+        let special: Bool
+
+        @inlinable
+        static func < (_ first: Self, _ second: Self) -> Bool {
+            first.code < second.code
+        }
+
+        /// Constrói novo requisito com mesmo código e alguns campos modificados.
+        func update(partial: Bool? = nil, special: Bool? = nil) -> Requirement {
+            .init(code: self.code, partial: partial ?? self.partial, special: special ?? self.special)
+        }
+    }
 }
 
 extension Discipline: Searchable {
-    /// Ordena por código, para buscar mais rápido.
-    static let sortOn: Properties? = .code
+    static let identifiers: Set<Properties> = [.code]
+    static let hiddenFields: Set<Properties> = [.syllabus]
 
     /// Propriedades buscáveis na disciplina.
     enum Properties: SearchableProperty {
-        typealias Of = Discipline
-
         /// Busca por código da disciplina.
         case code
         /// Busca pelo nome da disciplina.
@@ -73,19 +92,5 @@ extension Discipline: Searchable {
                     return 0.1
             }
         }
-    }
-}
-
-extension Discipline: Matchable {
-    /// Forma reduzida da disciplina, com
-    /// apenas nome e código.
-    struct ReducedForm: Encodable {
-        let code: String
-        let name: String
-    }
-
-    @inlinable
-    func reduced() -> ReducedForm {
-        .init(code: self.code, name: self.name)
     }
 }
