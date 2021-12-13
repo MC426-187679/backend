@@ -2,6 +2,14 @@
 
 Estrutura de backend usando Vapor, com testes unitários já integrados.
 
+## Usando Docker para desenvolvimento
+
+O script `Tools/contianed` pode ser usado para preparar e acessar um container de desenvolvimento. Para executar o servidor de dentro do container use:
+
+```bash
+Tools/contained swift run -c release
+```
+
 ## Estrutura de folders:
 
 ```
