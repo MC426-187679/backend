@@ -195,8 +195,6 @@ extension JSONValue: CustomDebugStringConvertible {
                 return "boolean(\(value))"
             case .null:
                 return "null"
-            default:
-                return "Invalid JSONValue"
         }
     }
 }
@@ -271,11 +269,6 @@ extension JSONValue: Encodable {
             case .null:
                 var container = encoder.singleValueContainer()
                 try container.encodeNil()
-            default:
-                throw EncodingError.invalidValue(self, .init(
-                    codingPath: encoder.codingPath,
-                    debugDescription: "Invalid JSONValue"
-                ))
         }
     }
 }
