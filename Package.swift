@@ -39,12 +39,14 @@ let package = Package(
         .target(
             name: "RapidFuzz",
             exclude: ["rapidfuzz-cpp"],
-            cSettings: Settings.c,
+            // habilita warnings e erros de C/C++
+            cSettings: Settings.c + [.unsafeFlags(Settings.warnings)],
             cxxSettings: Settings.cxx + [
                 .headerSearchPath("rapidfuzz-cpp"),
                 // Modo de cálculo do score, usando uma das classes em
                 // https://github.com/maxbachmann/rapidfuzz-cpp#readme
-                .define("RATIO_TYPE", to: "CachedPartialRatio")
+                .define("RATIO_TYPE", to: "CachedPartialRatio"),
+                .unsafeFlags(Settings.warnings)
             ],
             swiftSettings: Settings.swift
         ),
@@ -55,9 +57,8 @@ let package = Package(
                 .target(name: "App"),
                 .product(name: "XCTVapor", package: "vapor")
             ],
-            // habilita warnings e erros de C/C++
-            cSettings: Settings.c + [.unsafeFlags(Settings.warnings)],
-            cxxSettings: Settings.cxx + [.unsafeFlags(Settings.warnings)],
+            cSettings: Settings.c,
+            cxxSettings: Settings.cxx,
             swiftSettings: Settings.swift
         )
     ],
